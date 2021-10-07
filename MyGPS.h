@@ -1,6 +1,7 @@
 //MyGPS Library
 //秋月電子AE-GYSFDMAXB GPSモジュール用ライブラリ
-//Arduino用
+//Arduino MEGA用 GPSはシリアルポート1に接続、設定は工場出荷時のままで構わない。
+//GPS->Arduino側は直結して構わないが、Arduino->GPSは接続せずGPSのRXはプルダウンすること。
 //開発：UECS研究会
 //Ver1.0 2021/10/6
 //このライブラリはArduno標準ライブラリがあれば単体でも使用できる
