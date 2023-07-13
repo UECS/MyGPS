@@ -30,12 +30,10 @@ GT-902PMGGは安価なのとバラ線なので配線に融通が効くが日付�
 --------------------------------------------------
 結線方法
 
-Arduino     Module
+Arduino RX1(19pin)->GPS TX
 
-RX1(19pin)->GPS TX
+Arduino 5V        ->GPS 5V
 
-5V        ->GPS 5V
+Arduino GND       ->GPS GND
 
-GND       ->GPS GND
-
-3.3V->10kΩ->GPS RX
+Arduino 3.3V->10kΩ->GPS RX
