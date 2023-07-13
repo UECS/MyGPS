@@ -109,11 +109,114 @@ if(strcmp((char *)(gps_txt+sumpos),sumtxtL)==0)
     //NG
   }
 
-
-if(strstr(gps_txt,"$GPZDA")!=NULL){GPSSts=true;DecodeZDA();return GPS_SERIAL_ZDA;}
-if(strstr(gps_txt,"$GPGLL")!=NULL){DecodeGLL();return GPS_SERIAL_GLL;}
-if(strstr(gps_txt,"$GPGSV")!=NULL){DecodeGSV();return GPS_SERIAL_GSV;}
+if(strstr(gps_txt,"RMC,")!=NULL){GPSSts=true;RMCSts=true;DecodeRMC();return GPS_SERIAL_RMC;}
+else if(!RMCSts && strstr(gps_txt,"ZDA,")!=NULL){GPSSts=true;DecodeZDA();return GPS_SERIAL_ZDA;}
+else if(!RMCSts && strstr(gps_txt,"GLL,")!=NULL){DecodeGLL();return GPS_SERIAL_GLL;}
+else if(strstr(gps_txt,"GSV,")!=NULL){DecodeGSV();return GPS_SERIAL_GSV;}
 return GPS_SERIAL_OTHER;
+}
+
+//-------------------------------------
+void GPS::DecodeRMC()
+{
+//RMCセンテンスは位置情報と日付時刻を簡潔に示す
+//得られるのは世界標準時なので日本標準時に変換している
+//例:
+//$GNRMC,072134.00,A,3601.47407,N,14005.91166,E,0.000,,100723,,,A*67
+//$GNRMC,051320.00,V,,,,,,,120723,,,N*63
+//どの衛星のデータかは以下のTalker IDによって決定。
+//GP=GPS/SBAS、GL=GLONASS、GA=Galileo、GB=BeiDou、GQ=QZSS、GN=任意の衛星の組み合わせ
+
+double toLat;
+double toLon;
+
+TimeSts=false;
+PositionSts=false;
+int i=0;
+int ii=0;
+i=SkipComma(i);
+if(i==SERIAL_BUFFSIZE){return;}
+long HHMMSS=atol((char *)(gps_txt+i));
+
+i=SkipComma(i);
+if(i==SERIAL_BUFFSIZE){return;}
+if(gps_txt[i]=='A')//座標データは有効
+  {
+    //60進法表記なので10進表記に変換する
+    i=SkipComma(i);
+    if(i==SERIAL_BUFFSIZE){return;}
+    long LatH=atol((char *)(gps_txt+i))/100;
+    long LatM=atol((char *)(gps_txt+i))-LatH*100;
+    i=SkipDot(i);
+    ii=i;
+    if(i==SERIAL_BUFFSIZE){return;}
+    double LatL=atol((char *)(gps_txt+i));
+    
+    i=SkipComma(i);
+    if(i==SERIAL_BUFFSIZE){return;}
+    //本来はここでN：北緯、S：南緯の判定が入る
+    
+    //出力される小数部の桁数を求めて除数を決める
+    //(GPSモジュールによって桁数が違うため)
+    double pw=1;
+    for(int j=0;j<i-ii-1;j++)
+      {pw=pw*10;}
+    toLat=LatH+(LatM+LatL/pw)/60;
+    
+    i=SkipComma(i);
+    if(i==SERIAL_BUFFSIZE){return;}
+    long LonH=atol((char *)(gps_txt+i))/100;
+    long LonM=atol((char *)(gps_txt+i))-LonH*100;
+    
+    //60進法表記なので10進表記に変換する
+    i=SkipDot(i);
+    if(i==SERIAL_BUFFSIZE){return;}
+    double LonL=atol((char *)(gps_txt+i));
+    toLon=LonH+(LonM+LonL/pw)/60;//
+    
+    LatitudeDeg=toLat;
+    LongitudeDeg=toLon;    
+    PositionSts=true;
+
+    i=SkipComma(i);
+    i=SkipComma(i);
+    //東経西経判定が入る
+    i=SkipComma(i);
+    //移動速度
+    i=SkipComma(i);
+  }
+else if (gps_txt[i]=='V')//座標無効
+  {
+    i=SkipComma(i);
+    i=SkipComma(i);
+    i=SkipComma(i);
+    i=SkipComma(i);
+    i=SkipComma(i);
+    i=SkipComma(i);
+    i=SkipComma(i);
+  }
+
+if(i==SERIAL_BUFFSIZE){return;}
+long DDMMYY=atol((char *)(gps_txt+i));
+
+//時間の取得(国際標準時)
+Hour=HHMMSS/10000;
+Min=HHMMSS/100-Hour*100;
+Sec=HHMMSS%100;
+
+//日付の取得
+Day=DDMMYY/10000;
+Mon=DDMMYY/100-Day*100;
+Year=DDMMYY%100+2000;
+
+//-----------------------------------日本標準時に変換する
+GMTtoJST(JST);
+
+if(Year>2018)
+  {TimeSts=true;}
+
+
+
 }
 //------------------------------------------
 void GPS::DecodeZDA()
@@ -129,8 +232,6 @@ This is managed independently by the GPS unit, and errors are always kept within
 Even if it can not complement the satellite once it is calibrated, the date and time can be obtained but the accuracy gradually decreases.
 Since it is world standard time to obtain it is converted to Japan Standard Time.
 */
-
-
 
 
 TimeSts=false;
@@ -162,89 +263,10 @@ Min=UHMS/100-Hour*100;
 Sec=UHMS-Hour*10000-Min*100;
 
 //-----------------------------------日本標準時に変換する
-
-int monthdayMax=monthday[Mon];
-//うるう年判定
-if(Year % 4 == 0 && Year % 100 != 0 || Year % 400 == 0)
-  {monthdayMax=monthday_l[Mon];}
-
-Hour=Hour+JST;
-if(Hour>=24)
-  {
-  Hour-=24;
-  Day++;
-  
-  if(Day>monthdayMax)
-      {
-      Day=1;
-      Mon++;
-      
-      if(Mon>12)
-        {
-        Mon=1;
-        Year++;
-        }
-      
-      }
-  
-  }
+GMTtoJST(JST);
 
 if(Year>2018)
-  {
-  TimeSts=true;
-  }
-
-  UECSDate=(Year-2000)*10000+Mon*100+Day;
-  UECSTime=Hour*10000+Min*100+Sec;
-
-//To Excel serial time
-// double exTime=((double)Sec+(double)Min*60.0+(double)Hour*3600.0)/864*1000000;
-//  U_ccmList[CCMID_ExTime].value=exTime;
-
-HourOfTheToday=(double)Sec/3600.0+(double)Min/60.0+(double)Hour;
-
-/*
-//To Excel date
-U_ccmList[CCMID_ExDate].value=36525;// y2k
-for(i=2000;i<Year;i++)
-  {
-  if(i % 4 == 0 && i % 100 != 0 || i % 400 == 0)
-    {
-      U_ccmList[CCMID_ExDate].value+=366;
-      }
-   else
-      {
-      U_ccmList[CCMID_ExDate].value+=365;
-      } 
-  }  
-for(i=1;i<Mon;i++)
-  {
-  if(Year % 4 == 0 && Year % 100 != 0 || Year % 400 == 0)
-    {
-      U_ccmList[CCMID_ExDate].value+=monthday_l[i];
-      }
-   else
-      {
-      U_ccmList[CCMID_ExDate].value+=monthday[i];
-      } 
-  } 
-  U_ccmList[CCMID_ExDate].value+=Day;
-  */
-
-  DayOfTheYear=0;
-  for(i=1;i<Mon;i++)
-  {
-  if(Year % 4 == 0 && Year % 100 != 0 || Year % 400 == 0)
-    {
-      DayOfTheYear+=monthday_l[i];
-      }
-   else
-      {
-      DayOfTheYear+=monthday[i];
-      } 
-  } 
-  DayOfTheYear+=Day;
-  
+  {TimeSts=true;}
 
 }
 
@@ -255,14 +277,18 @@ void GPS::DecodeGLL()
 //GLLセンテンスはGPSから得られた緯度経度を含んでいる
 //ただし、表記方法が60進法表記なのでGoogleMapなどで使われる10進角度表記に変換する
 //起動直後などで捕捉している衛星数が少ないと誤差が大きい
+//例：
+//$GNGLL,3601.46383,N,14005.91332,E,061306.00,A,A*71
 /*
 The GLL sentence contains latitude and longitude obtained from GPS.
 However, since the notation method is notation in hexadecimal notation, 
 it is converted to decimal angle notation used in GoogleMap and others.
 If the number of satellites captured just after startup is small, the error is large.
 */
+//Serial.println(gps_txt);
   PositionSts=false;
 int i=0;
+int ii=0;
 double toLat;
 double toLon;
 
@@ -272,13 +298,20 @@ if(i==SERIAL_BUFFSIZE){return;}
 long LatH=atol((char *)(gps_txt+i))/100;
 long LatM=atol((char *)(gps_txt+i))-LatH*100;
 i=SkipDot(i);
+ii=i;
 if(i==SERIAL_BUFFSIZE){return;}
 double LatL=atol((char *)(gps_txt+i));
-toLat=LatH+(LatM+LatL/10000)/60;
-
 
 i=SkipComma(i);
+if(i==SERIAL_BUFFSIZE){return;}
 //本来はここでN：北緯、S：南緯の判定が入る
+
+//出力される小数部の桁数を求めて除数を決める
+//(GPSモジュールによって桁数が違うため)
+double pw=1;
+for(int j=0;j<i-ii-1;j++)
+  {pw=pw*10;}
+toLat=LatH+(LatM+LatL/pw)/60;
 
 i=SkipComma(i);
 if(i==SERIAL_BUFFSIZE){return;}
@@ -289,15 +322,10 @@ long LonM=atol((char *)(gps_txt+i))-LonH*100;
 i=SkipDot(i);
 if(i==SERIAL_BUFFSIZE){return;}
 double LonL=atol((char *)(gps_txt+i));
-toLon=LonH+(LonM+LonL/10000)/60;//
+toLon=LonH+(LonM+LonL/pw)/60;//
 
 LatitudeDeg=toLat;
 LongitudeDeg=toLon;
-//U_ccmList[CCMID_Lat].value=toLat*1000000;
-//U_ccmList[CCMID_Lon].value=toLon*1000000;
-
-
-
 
 PositionSts=true;
 }
@@ -374,6 +402,89 @@ for(i;i<SERIAL_BUFFSIZE;i++)
 	if(gps_txt[i]=='.'){return i+1;}
 	}
 return SERIAL_BUFFSIZE;
+}
+//-------------------------------------------
+void GPS::GMTtoJST(int timeDiff)
+{
+int i;  
+int monthdayMax=monthday[Mon];
+//うるう年判定
+if(Year % 4 == 0 && Year % 100 != 0 || Year % 400 == 0)
+  {monthdayMax=monthday_l[Mon];}
+
+Hour=Hour+JST;
+if(Hour>=24)
+  {
+  Hour-=24;
+  Day++;
+  
+  if(Day>monthdayMax)
+      {
+      Day=1;
+      Mon++;
+      
+      if(Mon>12)
+        {
+        Mon=1;
+        Year++;
+        }
+      
+      }
+  
+  }
+
+
+  UECSDate=(Year-2000)*10000+Mon*100+Day;
+  UECSTime=Hour*10000+Min*100+Sec;
+
+//To Excel serial time
+// double exTime=((double)Sec+(double)Min*60.0+(double)Hour*3600.0)/864*1000000;
+//  U_ccmList[CCMID_ExTime].value=exTime;
+
+HourOfTheToday=(double)Sec/3600.0+(double)Min/60.0+(double)Hour;
+
+/*
+//To Excel date
+U_ccmList[CCMID_ExDate].value=36525;// y2k
+for(i=2000;i<Year;i++)
+  {
+  if(i % 4 == 0 && i % 100 != 0 || i % 400 == 0)
+    {
+      U_ccmList[CCMID_ExDate].value+=366;
+      }
+   else
+      {
+      U_ccmList[CCMID_ExDate].value+=365;
+      } 
+  }  
+for(i=1;i<Mon;i++)
+  {
+  if(Year % 4 == 0 && Year % 100 != 0 || Year % 400 == 0)
+    {
+      U_ccmList[CCMID_ExDate].value+=monthday_l[i];
+      }
+   else
+      {
+      U_ccmList[CCMID_ExDate].value+=monthday[i];
+      } 
+  } 
+  U_ccmList[CCMID_ExDate].value+=Day;
+  */
+
+  DayOfTheYear=0;
+  for(i=1;i<Mon;i++)
+  {
+  if(Year % 4 == 0 && Year % 100 != 0 || Year % 400 == 0)
+    {
+      DayOfTheYear+=monthday_l[i];
+      }
+   else
+      {
+      DayOfTheYear+=monthday[i];
+      } 
+  } 
+  DayOfTheYear+=Day;
+
 }
 //-------------------------------------------
 /*
