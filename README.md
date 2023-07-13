@@ -39,7 +39,8 @@ Arduino GND       ->GPS GND
 Arduino 3.3V->10kΩ->GPS RX
 
 --------------------------------------------------
-ライセンス
+License
+
 Copyright 2023 Hideto Kurosaki
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
